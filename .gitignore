@@ -1,0 +1,7 @@
+__pycache__
+.env/
+venv/
+build/
+dist/
+docx_replace_attach.egg-info/
+test/new*
