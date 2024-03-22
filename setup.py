@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="docx-replace-attach",
-    version="0.0.1",
+    version="0.0.2",
     author="mintya",
     author_email="931108724@qq.com",
     description="Replace key words to attachments inside a document of MS Word",
@@ -14,7 +14,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/mintya/docx-replace-attach",
     packages=setuptools.find_packages(),
-    install_requires=['python-docx>=1.1.0'],
+    install_requires=['python-docx>=0.8.11'],
     entry_points={},
     classifiers=[
         "Programming Language :: Python :: 3",
