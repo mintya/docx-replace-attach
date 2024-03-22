@@ -1,4 +1,9 @@
 # docx-replace-attach
+![License](https://img.shields.io/github/license/mintya/docx-replace-attach)
+![GitHub release](https://img.shields.io/github/release/mintya/docx-replace-attach)
+![GitHub stars](https://img.shields.io/github/stars/mintya/docx-replace-attach)
+![GitHub forks](https://img.shields.io/github/forks/mintya/docx-replace-attach)  
+
 This library was built on top of [python-docx](https://python-docx.readthedocs.io/en/latest/index.html) and the main purpose is to replace key words to attachments inside a document of MS Word.  
 ## Getting started
 You can define a key in your Word document This program requires the following key format: `{key_name}`
@@ -38,3 +43,5 @@ replace_word_t('template.docx', 'new.docx', 'word_attachment', 'word_attachment.
 replace_xlsx_t('template.docx', 'new.docx', 'excel_attachment', 'excel_attachment.xlsx')
 
 ```
+## Stargazers over time
+[![Stargazers over time](https://starchart.cc/mintya/docx-replace-attach.svg?variant=adaptive)](https://starchart.cc/mintya/docx-replace-attach)
