@@ -4,7 +4,11 @@
 ![GitHub stars](https://img.shields.io/github/stars/mintya/docx-replace-attach)
 ![GitHub forks](https://img.shields.io/github/forks/mintya/docx-replace-attach)  
 
-This library was built on top of [python-docx](https://python-docx.readthedocs.io/en/latest/index.html) and the main purpose is to replace key words to attachments inside a document of MS Word.  
+This library was built on top of [python-docx](https://python-docx.readthedocs.io/en/latest/index.html) and the main purpose is to replace key words to attachments inside a document of MS Word.    
+  
+Just like this:   
+![Example](images/img.png)  
+
 ## Getting started
 You can define a key in your Word document This program requires the following key format: `{key_name}`
 ### How to install
