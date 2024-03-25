@@ -1,12 +1,15 @@
 """Attach a xlsx or docx to word"""
 import base64
+import os
 import uuid
+from io import BytesIO
 
 from docx import Document
 from docx.opc.part import Part
 from docx.opc.constants import CONTENT_TYPE, RELATIONSHIP_TYPE
 from docx.opc.oxml import parse_xml
 from docx.opc.packuri import PackURI
+from PIL import Image, ImageDraw, ImageFont
 
 
 class _AttachmentType:
@@ -15,8 +18,8 @@ class _AttachmentType:
         'file_name': 'Microsoft_Excel____',
         'file_type': 'xlsx',
         'program_id': 'Excel.Sheet.12',
-        'shape_width': '48.0',
-        'shape_height': '48.0',
+        'shape_width': '76',
+        'shape_height': '48',
         'icon': (
             'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAABXFJREFUeF7tW3tQVFUc/u7dxQU'
             '1bPJZoBLQDIWwV0EqnRo0iLKEQEbyQVpjCgnGkDkRwWypNWpOBiNPS0GzUEHy1eAjBcEnfzQp5oROWWg6IiEUk+De25'
@@ -48,8 +51,8 @@ class _AttachmentType:
         'file_name': 'Microsoft_Word____',
         'file_type': 'docx',
         'program_id': 'Word.Document.12',
-        'shape_width': '48.0',
-        'shape_height': '48.0',
+        'shape_width': '76',
+        'shape_height': '48',
         'icon': (
             'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAABv5JREFUeF7tWwtQVFUY/i7vl5K'
             'VqfnAGHWXx6KA7ydkCSoiaIsgoYapoDA2YySBguazTGc0hEghEwUfmKhJYFmIjzE1lRFIMHzjIwSZTDNl9zTnLnu5S9'
@@ -86,6 +89,7 @@ class _AttachmentType:
 class _Attachment:
 
     def __init__(self, doc: Document, file_name: str, att_type: dict):
+        self.file_name = file_name
         self.doc_part = doc.part
         self.pkg = doc.part.package
         with open(file_name, "rb") as f:
@@ -103,7 +107,7 @@ class _Attachment:
                     r.element.insert(0, obj_ele)
 
     def _shape_rel_to(self):
-        shape_path = f'/word/media/icon_{self.att_type["file_type"]}.png'
+        shape_path = f'/word/media/icon_{self.att_type["file_type"]}_{str(len(self.pkg.parts))}.png'
         part_shape = None
         for part in self.pkg.parts:
             if part.partname == shape_path:
@@ -112,7 +116,7 @@ class _Attachment:
         if not part_shape:
             part_shape = Part.load(
                 PackURI(shape_path),
-                CONTENT_TYPE.PNG, base64.b64decode(self.att_type['icon']),
+                CONTENT_TYPE.PNG, self._generate_icon(self.att_type['icon']),
                 self.pkg
             )
             self.pkg.parts.append(part_shape)
@@ -167,6 +171,31 @@ class _Attachment:
                                 </o:OLEObject>
                             </w:object>"""
         return parse_xml(w_object_xml)
+
+    def _generate_icon(self, base_64: str) -> bytes:
+        title = os.path.basename(self.file_name)
+        title2 = ''
+
+        name, ex = os.path.splitext(title)
+        if len(name) >= 14:
+            title = name[:14]
+            title2 = name[14:20] + ex
+
+        base_image = Image.new('RGBA', (int(self.att_type["shape_width"]), int(self.att_type["shape_height"])))
+        image = Image.open(BytesIO(base64.b64decode(base_64)))
+        image.thumbnail((30, 30))
+
+        font = ImageFont.truetype('Arial', 8)
+        draw = ImageDraw.Draw(base_image, 'RGBA')
+        font_length = font.getlength(title)
+        draw.text((int((base_image.size[0] - font_length) / 2), 32), title, font=font, fill=(0, 0, 0, 255))
+        if title2:
+            font_length2 = font.getlength(title2)
+            draw.text((int((base_image.size[0] - font_length2) / 2), 40), title2, font=font, fill=(0, 0, 0, 255))
+        base_image.paste(image, (int((base_image.size[0] - image.size[0]) / 2), 0))
+        f = BytesIO()
+        base_image.save(f, 'PNG')
+        return f.getvalue()
 
 
 def _replace_attachment(doc: Document, variable: str, file_name: str, att_type: dict):
