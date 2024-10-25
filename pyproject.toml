@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docx-replace-attach"
+version = "0.0.4"
+description = "Replace key words to attachments inside a document of MS Word or Excel"
+authors = [
+    {name = "mintya", email = "931108724@qq.com"},
+]
+readme = "README.md"
+requires-python = ">=3.0"
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "python-docx>=1.1.0",
+    "pillow>=10.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mintya/docx-replace-attach"
+
+[tool.setuptools]
+packages = ["find:"]
+
+[tool.setuptools.find]

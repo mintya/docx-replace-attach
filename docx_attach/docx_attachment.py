@@ -1,7 +1,8 @@
 import base64
 import os
-import uuid
+from dataclasses import dataclass
 from io import BytesIO
+from pathlib import Path
 from typing import Optional
 
 from docx import Document
@@ -12,33 +13,26 @@ from docx.opc.part import Part
 from PIL import Image, ImageDraw, ImageFont
 
 
+@dataclass
 class AttachmentType:
-    def __init__(
-        self,
-        content_type: str,
-        file_name_prefix: str,
-        file_extension: str,
-        program_id: str,
-        shape_width: str,
-        shape_height: str,
-        icon_base64: str,
-    ):
-        self.content_type = content_type
-        self.file_name_prefix = file_name_prefix
-        self.file_extension = file_extension
-        self.program_id = program_id
-        self.shape_width = shape_width
-        self.shape_height = shape_height
-        self.icon_base64 = icon_base64
+    """附件类型的数据类"""
+    content_type: str
+    file_name_prefix: str
+    file_extension: str
+    program_id: str
+    shape_width: int
+    shape_height: int
+    icon_base64: str
 
 
+# 预定义的附件类型
 XLSX_ATTACHMENT = AttachmentType(
     content_type=CONTENT_TYPE.SML_SHEET,
-    file_name_prefix="Microsoft_Excel____",
+    file_name_prefix="Microsoft_Excel_",
     file_extension="xlsx",
     program_id="Excel.Sheet.12",
-    shape_width="76",
-    shape_height="48",  # 增加高度以适应更多文本
+    shape_width=76,
+    shape_height=60,
     icon_base64=(
         "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAABXFJREFUeF7tW3tQVFUc/u7dxQU"
         "1bPJZoBLQDIWwV0EqnRo0iLKEQEbyQVpjCgnGkDkRwWypNWpOBiNPS0GzUEHy1eAjBcEnfzQp5oROWWg6IiEUk+De25"
@@ -67,11 +61,11 @@ XLSX_ATTACHMENT = AttachmentType(
 
 DOCX_ATTACHMENT = AttachmentType(
     content_type=CONTENT_TYPE.WML_DOCUMENT,
-    file_name_prefix="Microsoft_Word____",
+    file_name_prefix="Microsoft_Word_",
     file_extension="docx",
     program_id="Word.Document.12",
-    shape_width="76",
-    shape_height="48",  # 增加高度以适应更多文本
+    shape_width=76,
+    shape_height=60,
     icon_base64=(
         "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAABv5JREFUeF7tWwtQVFUY/i7vl5K"
         "VqfnAGHWXx6KA7ydkCSoiaIsgoYapoDA2YySBguazTGc0hEghEwUfmKhJYFmIjzE1lRFIMHzjIwSZTDNl9zTnLnu5S9"
@@ -105,112 +99,75 @@ DOCX_ATTACHMENT = AttachmentType(
 )
 
 
-class Attachment:
+class AttachmentHandler:
+    """处理Word文档中的附件嵌入"""
+
     def __init__(self, doc: Document, file_path: str, attachment_type: AttachmentType):
         self.doc = doc
-        self.file_path = file_path
+        self.file_path = Path(file_path)
         self.attachment_type = attachment_type
         self.doc_part = doc.part
         self.package = doc.part.package
 
-        with open(file_path, "rb") as f:
-            self.file_content = f.read()
-
+        self.file_content = self._read_file_content()
         self.shape_rid: Optional[str] = None
-        self.embedd_rid: Optional[str] = None
+        self.embed_rid: Optional[str] = None
 
-    def replace_placeholder(self, placeholder: str):
+    def _read_file_content(self) -> bytes:
+        """读取附件文件内容"""
+        return self.file_path.read_bytes()
+
+    def replace_placeholder(self, placeholder: str) -> None:
+        """替换文档中的占位符为附件"""
+        self._create_relationships()
+        object_element = self._build_object_element()
+        self._replace_in_document(placeholder, object_element)
+
+    def _create_relationships(self) -> None:
+        """创建所需的关系"""
         self._create_shape_relationship()
         self._create_embedded_relationship()
-        object_element = self._build_object_element()
 
-        for paragraph in self.doc.paragraphs:
-            for run in paragraph.runs:
-                if run.text == f"{{{placeholder}}}":
-                    run.clear()
-                    run._r.append(object_element)
-
-    def _create_shape_relationship(self):
+    def _create_shape_relationship(self) -> None:
+        """创建图标关系"""
         shape_name = f"icon_{self.attachment_type.file_extension}_{len(self.package.parts)}.png"
         shape_path = f"/word/media/{shape_name}"
+
         shape_part = Part(
             partname=PackURI(shape_path),
             content_type=CONTENT_TYPE.PNG,
-            blob=self._generate_icon_image(),
-            package=self.package,
+            blob=self._generate_icon(),
+            package=self.package
         )
+
         self.package.parts.append(shape_part)
         self.shape_rid = self.doc_part.relate_to(shape_part, RELATIONSHIP_TYPE.IMAGE)
 
-    def _create_embedded_relationship(self):
+    def _create_embedded_relationship(self) -> None:
+        """创建嵌入文件关系"""
         file_name = (
             f"{self.attachment_type.file_name_prefix}{len(self.package.parts)}."
             f"{self.attachment_type.file_extension}"
         )
         embed_path = f"/word/embeddings/{file_name}"
+
         embed_part = Part(
             partname=PackURI(embed_path),
             content_type=self.attachment_type.content_type,
             blob=self.file_content,
-            package=self.package,
+            package=self.package
         )
+
         self.package.parts.append(embed_part)
-        self.embedd_rid = self.doc_part.relate_to(embed_part, RELATIONSHIP_TYPE.PACKAGE)
+        self.embed_rid = self.doc_part.relate_to(embed_part, RELATIONSHIP_TYPE.PACKAGE)
 
-    def _build_object_element(self):
-        shape_id = f"_x0000_i{uuid.uuid4().int}"
-        shape_type_xml = (
-            '<v:shapetype id="_x0000_t79" coordsize="21600,21600" o:spt="75" o:preferrelative="t" '
-            'path="m@4@5l@4@11@9@11@9@5xe" filled="f" stroked="f">'
-            '<v:stroke joinstyle="miter"/>'
-            '<v:formulas>'
-            '<v:f eqn="if lineDrawn pixelLineWidth 0"/>'
-            '<v:f eqn="sum @0 1 0"/>'
-            '<v:f eqn="sum 0 0 @1"/>'
-            '<v:f eqn="prod @2 1 2"/>'
-            '<v:f eqn="prod @3 21600 pixelWidth"/>'
-            '<v:f eqn="prod @3 21600 pixelHeight"/>'
-            '<v:f eqn="sum @0 0 1"/>'
-            '<v:f eqn="prod @6 1 2"/>'
-            '<v:f eqn="prod @7 21600 pixelWidth"/>'
-            '<v:f eqn="sum @8 21600 0"/>'
-            '<v:f eqn="prod @7 21600 pixelHeight"/>'
-            '<v:f eqn="sum @10 21600 0"/>'
-            '</v:formulas>'
-            '<v:path o:extrusionok="f" gradientshapeok="t" o:connecttype="rect"/>'
-            '<o:lock v:ext="edit" aspectratio="t"/>'
-            '</v:shapetype>'
-        )
-
-        object_xml = (
-            f'<w:object xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
-            f'xmlns:v="urn:schemas-microsoft-com:vml" '
-            f'xmlns:o="urn:schemas-microsoft-com:office:office" '
-            f'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
-            f'w:dxaOrig="1520" w:dyaOrig="960">'
-            f'{shape_type_xml}'
-            f'<v:shape id="{shape_id}" type="#_x0000_t79" alt="" '
-            f'style="width:{self.attachment_type.shape_width}pt;'
-            f'height:{self.attachment_type.shape_height}pt;mso-width-percent:0;'
-            f'mso-height-percent:0;mso-width-percent:0;mso-height-percent:0" o:ole="">'
-            f'<v:imagedata r:id="{self.shape_rid}" o:title=""/>'
-            f'</v:shape>'
-            f'<o:OLEObject Type="Embed" ProgID="{self.attachment_type.program_id}" '
-            f'ShapeID="{shape_id}" DrawAspect="Icon" ObjectID="{shape_id}" '
-            f'r:id="{self.embedd_rid}">'
-            f'<o:FieldCodes>\\s</o:FieldCodes>'
-            f'</o:OLEObject>'
-            f'</w:object>'
-        )
-
-        return parse_xml(object_xml)
-
-    def _generate_icon_image(self) -> bytes:
-        title = os.path.basename(self.file_path)
+    def _generate_icon(self) -> bytes:
+        """生成附件图标"""
+        title = self.file_path.name
         title2 = ''
         name, ext = os.path.splitext(title)
 
-        # 如果文件名超过14个字符，分成两行显示
+        # 处理文件名长度
         if len(name) >= 14:
             title = name[:14]
             title2 = name[14:20] + ext
@@ -220,11 +177,11 @@ class Attachment:
         # 创建基础图像
         base_image = Image.new(
             'RGBA',
-            (int(self.attachment_type.shape_width), int(self.attachment_type.shape_height)),
-            (255, 255, 255, 0)  # 透明背景
+            (self.attachment_type.shape_width, self.attachment_type.shape_height),
+            (255, 255, 255, 0)
         )
 
-        # 解码并调整图标大小
+        # 添加图标
         icon_image = Image.open(BytesIO(base64.b64decode(self.attachment_type.icon_base64)))
         icon_image.thumbnail((30, 30))
 
@@ -234,58 +191,130 @@ class Attachment:
         except IOError:
             font = ImageFont.load_default()
 
-        # 创建绘图对象
-        draw = ImageDraw.Draw(base_image, 'RGBA')
+        # 绘制文本
+        draw = ImageDraw.Draw(base_image)
 
         # 绘制第一行文本
         font_length = font.getlength(title)
-        x_position = (base_image.size[0] - font_length) / 2
+        x_position = (base_image.width - font_length) / 2
         draw.text((int(x_position), 32), title, font=font, fill=(0, 0, 0, 255))
 
-        # 如果有第二行文本，则绘制
+        # 绘制第二行文本（如果有）
         if title2:
             font_length2 = font.getlength(title2)
-            x_position2 = (base_image.size[0] - font_length2) / 2
+            x_position2 = (base_image.width - font_length2) / 2
             draw.text((int(x_position2), 40), title2, font=font, fill=(0, 0, 0, 255))
 
         # 粘贴图标
         icon_position = ((base_image.width - icon_image.width) // 2, 0)
         base_image.paste(icon_image, icon_position, icon_image)
 
-        # 保存为PNG字节流
+        # 保存为PNG
         output = BytesIO()
         base_image.save(output, format='PNG')
         return output.getvalue()
 
+    def _build_object_element(self) -> object:
+        """构建对象元素XML"""
+        shape_id = f"_x0000_i{os.urandom(4).hex()}"
 
-def replace_attachment(doc: Document, placeholder: str, file_path: str, attachment_type: AttachmentType):
-    attachment = Attachment(doc, file_path, attachment_type)
-    attachment.replace_placeholder(placeholder)
+        object_xml = self._get_object_xml_template().format(
+            shape_id=shape_id,
+            shape_width=self.attachment_type.shape_width,
+            shape_height=self.attachment_type.shape_height,
+            shape_rid=self.shape_rid,
+            program_id=self.attachment_type.program_id,
+            embed_rid=self.embed_rid
+        )
+
+        return parse_xml(object_xml)
+
+    def _get_object_xml_template(self) -> str:
+        """获取对象XML模板"""
+        return (
+            '<w:object xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            'xmlns:v="urn:schemas-microsoft-com:vml" '
+            'xmlns:o="urn:schemas-microsoft-com:office:office" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<v:shape id="{shape_id}" type="#_x0000_t75" style="width:{shape_width}pt;height:{shape_height}pt">'
+            '<v:imagedata r:id="{shape_rid}" o:title=""/>'
+            '</v:shape>'
+            '<o:OLEObject Type="Embed" ProgID="{program_id}" ShapeID="{shape_id}" '
+            'DrawAspect="Icon" ObjectID="_1" r:id="{embed_rid}"/>'
+            '</w:object>'
+        )
+
+    def _replace_in_document(self, placeholder: str, object_element) -> None:
+        """在文档中替换占位符"""
+        for paragraph in self.doc.paragraphs:
+            for run in paragraph.runs:
+                if run.text == f"{{{placeholder}}}":
+                    run.clear()
+                    run._r.append(object_element)
 
 
-def replace_xlsx(doc: Document, placeholder: str, file_path: str):
-    """在 Word 文档中替换占位符为嵌入的 Excel 文件。"""
-    replace_attachment(doc, placeholder, file_path, XLSX_ATTACHMENT)
-
-
-def replace_docx(doc: Document, placeholder: str, file_path: str):
-    """在 Word 文档中替换占位符为嵌入的 Word 文件。"""
-    replace_attachment(doc, placeholder, file_path, DOCX_ATTACHMENT)
+def replace_attachment_in_document(
+        doc: Document,
+        placeholder: str,
+        file_path: str,
+        attachment_type: AttachmentType
+) -> None:
+    """替换文档中的占位符为附件"""
+    handler = AttachmentHandler(doc, file_path, attachment_type)
+    handler.replace_placeholder(placeholder)
 
 
 def replace_attachment_in_template(
-    template_path: str, output_path: str, placeholder: str, file_path: str, attachment_type: AttachmentType
-):
+        template_path: str,
+        output_path: str,
+        placeholder: str,
+        file_path: str,
+        attachment_type: AttachmentType
+) -> None:
+    """在模板中替换占位符并保存为新文档"""
     doc = Document(template_path)
-    replace_attachment(doc, placeholder, file_path, attachment_type)
+    replace_attachment_in_document(doc, placeholder, file_path, attachment_type)
     doc.save(output_path)
 
 
-def replace_xlsx_in_template(template_path: str, output_path: str, placeholder: str, file_path: str):
-    """将 Excel 文件嵌入到 Word 模板中并保存为新文件。"""
-    replace_attachment_in_template(template_path, output_path, placeholder, file_path, XLSX_ATTACHMENT)
+# 便捷函数
+def replace_xlsx(doc: Document, placeholder: str, file_path: str) -> None:
+    """替换为Excel附件"""
+    replace_attachment_in_document(doc, placeholder, file_path, XLSX_ATTACHMENT)
 
 
-def replace_docx_in_template(template_path: str, output_path: str, placeholder: str, file_path: str):
-    """将 Word 文件嵌入到 Word 模板中并保存为新文件。"""
-    replace_attachment_in_template(template_path, output_path, placeholder, file_path, DOCX_ATTACHMENT)
+def replace_docx(doc: Document, placeholder: str, file_path: str) -> None:
+    """替换为Word附件"""
+    replace_attachment_in_document(doc, placeholder, file_path, DOCX_ATTACHMENT)
+
+
+def replace_xlsx_in_template(
+        template_path: str,
+        output_path: str,
+        placeholder: str,
+        file_path: str
+) -> None:
+    """在模板中替换为Excel附件"""
+    replace_attachment_in_template(
+        template_path,
+        output_path,
+        placeholder,
+        file_path,
+        XLSX_ATTACHMENT
+    )
+
+
+def replace_docx_in_template(
+        template_path: str,
+        output_path: str,
+        placeholder: str,
+        file_path: str
+) -> None:
+    """在模板中替换为Word附件"""
+    replace_attachment_in_template(
+        template_path,
+        output_path,
+        placeholder,
+        file_path,
+        DOCX_ATTACHMENT
+    )
