@@ -20,14 +20,14 @@ Example:
 ```py
 from docx import Document
 from docx_attachment import replace_xlsx
-from docx_attachment import replace_word
+from docx_attachment import replace_docx
 
 
 # The template file
 doc = Document('template.docx')
 
 # replace key_name to a word file, key_name is word_attachment, word file is word_attachment.docx
-replace_word(doc, 'word_attachment', 'word_attachment.docx')
+replace_docx(doc, 'word_attachment', 'word_attachment.docx')
 
 # replace key_name to a excel file, key_name is excel_attachment, excel file is excel_attachment.xlsx
 replace_xlsx(doc, 'excel_attachment', 'excel_attachment.xlsx')
@@ -38,13 +38,13 @@ doc.save('new.docx')
 ```
 You can also use:
 ```py
-from docx_attachment import replace_xlsx_t
-from docx_attachment import replace_word_t
+from docx_attachment import replace_xlsx_in_template
+from docx_attachment import replace_docx_in_template
 
 
-replace_word_t('template.docx', 'new.docx', 'word_attachment', 'word_attachment.docx')
+replace_docx_in_template('template.docx', 'new.docx', 'word_attachment', 'word_attachment.docx')
 
-replace_xlsx_t('template.docx', 'new.docx', 'excel_attachment', 'excel_attachment.xlsx')
+replace_xlsx_in_template('template.docx', 'new.docx', 'excel_attachment', 'excel_attachment.xlsx')
 
 ```
 ## Stargazers over time
