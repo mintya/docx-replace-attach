@@ -229,7 +229,8 @@ class AttachmentHandler:
 
         return parse_xml(object_xml)
 
-    def _get_object_xml_template(self) -> str:
+    @staticmethod
+    def _get_object_xml_template() -> str:
         """获取对象XML模板"""
         return (
             '<w:object xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
