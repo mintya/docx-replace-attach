@@ -25,7 +25,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/mintya/docx-replace-attach"
 
-[tool.setuptools]
-packages = ["find:"]
-
-[tool.setuptools.find]
+[tool.setuptools.packages.find]
+# 如果你的代码在根目录，使用：
+where = ["."]
+# 如果代码在src目录下，则使用：
+# where = ["src"]
