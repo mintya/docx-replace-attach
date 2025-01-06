@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
+from copy import deepcopy
 
 from docx import Document
 from docx.opc.constants import CONTENT_TYPE, RELATIONSHIP_TYPE
@@ -247,11 +248,141 @@ class AttachmentHandler:
 
     def _replace_in_document(self, placeholder: str, object_element) -> None:
         """在文档中替换占位符"""
+        placeholder_text = f"{{{placeholder}}}"
+
         for paragraph in self.doc.paragraphs:
-            for run in paragraph.runs:
-                if run.text == f"{{{placeholder}}}":
-                    run.clear()
-                    run._r.append(object_element)
+            if placeholder_text not in paragraph.text:
+                continue
+
+            self._replace_in_paragraph(paragraph, placeholder_text, object_element)
+
+    def _replace_in_paragraph(self, paragraph, placeholder_text: str, object_element) -> None:
+        """在段落中替换占位符"""
+        # 处理单个run包含完整占位符的情况
+        if self._replace_in_single_run(paragraph, placeholder_text, object_element):
+            return
+
+        # 处理占位符跨多个run的情况
+        self._replace_across_runs(paragraph, placeholder_text, object_element)
+
+    def _replace_in_single_run(self, paragraph, placeholder_text: str, object_element) -> bool:
+        """处理单个run包含完整占位符的情况"""
+        for i, run in enumerate(paragraph.runs):
+            if placeholder_text not in run.text:
+                continue
+
+            prefix = run.text[:run.text.index(placeholder_text)]
+            postfix = run.text[run.text.index(placeholder_text) + len(placeholder_text):]
+
+            run.text = prefix
+            postfix_run = paragraph.add_run(postfix)
+            self._copy_run_format_xml(postfix_run, run)
+
+            object_run = paragraph.add_run()
+            object_run.element.append(object_element)
+
+            # 按顺序插入新的runs
+            paragraph._p.insert(i + 1, object_run.element)
+            paragraph._p.insert(i + 2, postfix_run.element)
+            return True
+
+        return False
+
+    def _replace_across_runs(self, paragraph, placeholder_text: str, object_element) -> None:
+        """处理占位符跨多个run的情况"""
+        start_run_index = None
+        first_run_prefix_index = -1
+        accumulated_text = ""
+        runs_to_clear = []
+
+        for i, run in enumerate(paragraph.runs):
+            if first_run_prefix_index == -1:
+                first_run_prefix_index = self._part_contains(run.text, placeholder_text)
+            if start_run_index is None and first_run_prefix_index != -1:
+                start_run_index = i
+
+            if start_run_index is not None:
+                runs_to_clear.append(run)
+                accumulated_text += run.text
+
+                if self._process_accumulated_text(
+                        paragraph,
+                        placeholder_text,
+                        accumulated_text,
+                        runs_to_clear,
+                        start_run_index,
+                        first_run_prefix_index,
+                        object_element
+                ):
+                    break
+                elif not placeholder_text.startswith(accumulated_text):
+                    start_run_index = None
+                    first_run_prefix_index = -1
+                    accumulated_text = ""
+                    runs_to_clear = []
+
+    @staticmethod
+    def _process_accumulated_text(
+            paragraph,
+            placeholder_text: str,
+            accumulated_text: str,
+            runs_to_clear: list,
+            start_run_index: int,
+            first_run_prefix_index: int,
+            object_element
+    ) -> bool:
+        """处理累积的文本"""
+        if placeholder_text not in accumulated_text:
+            return False
+
+        first_run = runs_to_clear[0] if runs_to_clear else None
+        last_run = runs_to_clear[-1] if runs_to_clear else None
+        if first_run is None or last_run is None:
+            return False
+
+        # 清除中间的runs
+        if len(runs_to_clear) > 1:
+            for run_to_clear in runs_to_clear[1:len(runs_to_clear) - 1]:
+                run_to_clear.text = ""
+
+        # 处理第一个run
+        first_run.text = first_run.text[:first_run_prefix_index]
+
+        # 处理最后一个run
+        for j in range(1, len(placeholder_text) + 1):
+            postfix = placeholder_text[j:]
+            if last_run.text.startswith(postfix):
+                last_run.text = last_run.text[len(postfix):]
+                break
+
+        # 插入对象
+        object_run = paragraph.add_run()
+        object_run.element.append(object_element)
+        paragraph._p.insert(start_run_index + 1, object_run.element)
+        return True
+
+    @staticmethod
+    def _copy_run_format_xml(source_run, target_run):
+        # 复制rPr(run properties)元素
+        source_rPr = source_run.element.rPr
+        if source_rPr is not None:
+            target_run.element.get_or_add_rPr().clear_content()
+            for element in source_rPr.iterchildren():
+                target_run.element.rPr.append(deepcopy(element))
+
+    @staticmethod
+    def _part_contains(run_text: str, placeholder_text: str) -> int:
+        index = -1
+
+        if placeholder_text.startswith(run_text):
+            return 0
+        for i in range(1, len(placeholder_text) + 1):
+            prefix = placeholder_text[:i]
+            if run_text.endswith(prefix):
+                index = run_text.index(prefix)
+            else:
+                break
+        return index
 
 
 def replace_attachment_in_document(

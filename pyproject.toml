@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docx-replace-attach"
-version = "0.0.4"
+version = "0.0.5"
 description = "Replace key words to attachments inside a document of MS Word or Excel"
 authors = [
     {name = "mintya", email = "931108724@qq.com"},
